@@ -35,6 +35,7 @@ import time
 from dataclasses import dataclass
 
 from musegadget import __version__
+from musegadget import plasma  # --- plasma ---
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +99,160 @@ COMMAND_SPECS = {
         "required": {},
         "optional": {},
     },
+    # --- plasma: KDE Plasma desktop commands ---
+    "desktop.status": {
+        "description": (
+            "Probe this gadget's KDE Plasma integration: session bus, Klipper, "
+            "KWin, helper tools. Run this first on a Plasma machine before "
+            "using the other desktop.*, clipboard.*, window.*, media.*, "
+            "audio.*, session.*, power.* or screen.* commands."
+        ),
+        "required": {},
+        "optional": {},
+    },
+    "desktop.notify": {
+        "description": "Pop a desktop notification on the Plasma session.",
+        "required": {
+            "title": {"type": "string", "description": "Notification title."},
+        },
+        "optional": {
+            "body": {"type": "string", "description": "Notification body text."},
+            "urgency": {"type": "string", "description": "'low', 'normal' (default) or 'critical'."},
+            "expire_ms": {"type": "integer", "description": "How long it stays, ms. 0 = persistent. Default 5000."},
+        },
+    },
+    "desktop.screenshot": {
+        "description": (
+            "Take a screenshot with Spectacle (background mode, no popup) and "
+            "save it as a PNG. Returns the file path — then use file.read to "
+            "fetch the image bytes."
+        ),
+        "required": {},
+        "optional": {
+            "mode": {"type": "string", "description": "'fullscreen' (default), 'active' window, or 'region'."},
+        },
+        "timeout_ms": 60000,
+    },
+    "clipboard.get": {
+        "description": "Read text from the Plasma clipboard via Klipper.",
+        "required": {},
+        "optional": {
+            "index": {"type": "integer", "description": "History entry, 0 = most recent. Omit for the current clipboard."},
+        },
+    },
+    "clipboard.set": {
+        "description": "Put text on the Plasma clipboard via Klipper.",
+        "required": {
+            "text": {"type": "string", "description": "Text to stage on the clipboard."},
+        },
+        "optional": {
+            "clear_history": {"type": "boolean", "description": "Also wipe Klipper's history (useful after staging a secret). Default false."},
+        },
+    },
+    "clipboard.history": {
+        "description": "Klipper clipboard history, newest first.",
+        "required": {},
+        "optional": {
+            "limit": {"type": "integer", "description": "Max entries, 1-50. Default 20."},
+        },
+    },
+    "clipboard.clear": {
+        "description": "Wipe Klipper's clipboard history and current contents.",
+        "required": {},
+        "optional": {},
+    },
+    "window.list": {
+        "description": (
+            "List open windows on the Plasma desktop: caption, app class, "
+            "virtual desktop, active/minimized flags. Implemented via a KWin "
+            "script; see desktop.status if it reports no output."
+        ),
+        "required": {},
+        "optional": {},
+        "timeout_ms": 45000,
+    },
+    "window.focus": {
+        "description": (
+            "Bring a window to the front by substring match against its title "
+            "or app class (case-insensitive). Un-minimizes it, moves it to the "
+            "current desktop, and activates it."
+        ),
+        "required": {
+            "match": {"type": "string", "description": "Substring to match, e.g. 'firefox' or 'Settings'."},
+        },
+        "optional": {},
+        "timeout_ms": 45000,
+    },
+    "screen.lock": {
+        "description": "Lock the Plasma session immediately (screen locker).",
+        "required": {},
+        "optional": {},
+    },
+    "screen.brightness": {
+        "description": "Screen brightness via PowerDevil D-Bus (keeps Plasma's OSD/state in sync).",
+        "required": {},
+        "optional": {
+            "action": {"type": "string", "description": "'get' (default) or 'set'."},
+            "level": {"type": "number", "description": "0-100 percent, for action 'set'."},
+            "silent": {"type": "boolean", "description": "Suppress the brightness OSD popup. Default false."},
+        },
+    },
+    "media.control": {
+        "description": "Control media playback via MPRIS/playerctl.",
+        "required": {},
+        "optional": {
+            "action": {"type": "string", "description": "'play', 'pause', 'play-pause' (default), 'next', 'previous' or 'stop'."},
+            "player": {"type": "string", "description": "Player name (e.g. 'spotify'). Default: the active player."},
+        },
+    },
+    "media.info": {
+        "description": "Now-playing info via playerctl: player, artist, title, album, status.",
+        "required": {},
+        "optional": {
+            "player": {"type": "string", "description": "Player name. Default: the active player."},
+        },
+    },
+    "audio.volume": {
+        "description": "System audio volume via wpctl (PipeWire).",
+        "required": {},
+        "optional": {
+            "action": {"type": "string", "description": "'get' (default), 'set' or 'mute' (toggles)."},
+            "level": {"type": "number", "description": "Volume 0.0-1.0, for action 'set'."},
+        },
+    },
+    "session.power": {
+        "description": (
+            "Power/session actions: 'suspend', 'reboot', 'shutdown' or 'logout'. "
+            "Acts immediately via ksmserver (logind fallback). Note: after "
+            "'suspend' the reply may never arrive — the machine is asleep."
+        ),
+        "required": {
+            "action": {"type": "string", "description": "'suspend', 'reboot', 'shutdown' or 'logout'."},
+        },
+        "optional": {
+            "confirm_dialog": {"type": "boolean", "description": "Show Plasma's confirmation dialog first. Default false."},
+        },
+        "timeout_ms": 20000,
+    },
+    "session.idle_inhibit": {
+        "description": (
+            "Block idle sleep/screen locking for a bounded time (e.g. during a "
+            "long build). Auto-expires; no uninhibit needed."
+        ),
+        "required": {},
+        "optional": {
+            "duration_s": {"type": "integer", "description": "60 to 28800 seconds. Default 1800."},
+            "reason": {"type": "string", "description": "Human-readable reason shown to the session."},
+        },
+    },
+    "power.profile": {
+        "description": "System power profile via powerprofilesctl.",
+        "required": {},
+        "optional": {
+            "action": {"type": "string", "description": "'get' (default) or 'set'."},
+            "profile": {"type": "string", "description": "'performance', 'balanced' or 'power-saver', for action 'set'."},
+        },
+    },
 }
 
 
@@ -139,6 +294,10 @@ class Executor:
                 return self.file_op(command.split(".")[1], params)
             if command == "device.health":
                 return ok(device_health())
+            # --- plasma: our dispatch (upstream handles the rest above) ---
+            if command.split(".")[0] in ("desktop", "clipboard", "window",
+                    "media", "audio", "session", "power", "screen"):
+                return self._plasma(command, params)
         except Exception as exc:
             log.exception("%s failed", command)
             return error(f"{type(exc).__name__}: {exc}")
@@ -209,6 +368,13 @@ class Executor:
             "truncated": out_cut or err_cut,
             "duration_ms": int((time.monotonic() - started) * 1000),
         })
+
+    # --- plasma: our commands (upstream methods above) ---
+    def _plasma(self, command: str, params: dict) -> dict:
+        try:
+            return ok(plasma.run(command, params, self._child_options(), self.account))
+        except plasma.PlasmaError as exc:
+            return error(str(exc))
 
     def file_op(self, op: str, params: dict) -> dict:
         request = json.dumps({**params, "op": op})
