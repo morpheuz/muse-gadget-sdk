@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Service
+Name=Muse
+Comment=Ask your Muse straight from KRunner
+Icon=muse
+X-KDE-ServiceTypes=Plasma/Runner
+X-KDE-PluginInfo-Name=muse-runner
+X-KDE-PluginInfo-Version=1.0
+X-KDE-PluginInfo-License=Apache-2.0
+X-KDE-PluginInfo-EnabledByDefault=true
+X-Plasma-API=DBus2
+X-Plasma-DBusRunner-Service=org.kde.muse.runner
+X-Plasma-DBusRunner-Path=/muse
+X-Plasma-Runner-Syntaxes=muse :q:
+X-Plasma-Runner-Syntax-Descriptions=Sends :q: to your Muse; the answer appears in chat
