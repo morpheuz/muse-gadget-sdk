@@ -1,0 +1,6 @@
+[Unit]
+Description=Report disk usage to Muse
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/disk-watch.sh

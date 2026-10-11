@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# muse-msg — talk to your Muse from this Linux box.
+#
+# Sends a message through the musegadget service, which forwards it over the
+# gadget's encrypted session. It lands in the Muse app as a message coming
+# from this device (main chat by default, or a side chat with --chat).
+#
+#   muse-msg alert [--severity info|warning|critical] [--source NAME] [--chat ID] "message"
+#   muse-msg ask [--chat ID] "question"
+#   muse-msg event NAME [--source NAME] [--chat ID] ["details..."]
+#   muse-msg ping
+#
+# Alerts/events use a structured prefix so the agent can tell machine traffic
+# apart from typed chat:
+#   [muse:alert] severity=warning source=disk-watch :: /home is 91% full
+#   [muse:ask]   <question>
+#   [muse:event] name=screen-locked source=presence :: details
+#   [muse:ping]
+#
+# Requires the musegadget service to be running and paired. Needs no root.
+
+set -u
+PROG="muse-msg"
+
+die() { echo "$PROG: $*" >&2; exit 1; }
+
+# Collapse to one line and strip control characters (keep tab).
+sanitize() { printf '%s' "$1" | tr '\n' ' ' | tr -d '\000-\010\013\014\016-\037'; }
+
+send() { # $1 = message, $2 = session id (may be empty)
+    if [ -n "${2:-}" ]; then
+        musegadget send-user-msg --session-id "$2" "$1"
+    else
+        musegadget send-user-msg "$1"
+    fi
+}
+
+usage() {
+    sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+    exit "${1:-0}"
+}
+
+cmd_alert() {
+    local severity="info" source="manual" chat="" msg=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --severity) severity="${2:?}"; shift 2 ;;
+            --source)   source="${2:?}";   shift 2 ;;
+            --chat)     chat="${2:?}";     shift 2 ;;
+            --help|-h)  usage 0 ;;
+            --) shift; break ;;
+            -*) die "unknown option: $1" ;;
+            *) break ;;
+        esac
+    done
+    msg="$(sanitize "$*")"
+    [ -n "$msg" ] || die 'usage: muse-msg alert [--severity info|warning|critical] [--source NAME] [--chat ID] "message"'
+    case "$severity" in info|warning|critical) ;; *) die "severity must be info, warning or critical" ;; esac
+    send "[muse:alert] severity=$severity source=$source :: $msg" "$chat"
+}
+
+cmd_ask() {
+    local chat="" q=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --chat) chat="${2:?}"; shift 2 ;;
+            --help|-h) usage 0 ;;
+            --) shift; break ;;
+            -*) die "unknown option: $1" ;;
+            *) break ;;
+        esac
+    done
+    q="$(sanitize "$*")"
+    [ -n "$q" ] || die 'usage: muse-msg ask [--chat ID] "question"'
+    send "[muse:ask] $q" "$chat"
+    echo "Sent. Watch your Muse chat for the answer."
+}
+
+cmd_event() {
+    local name="${1:?usage: muse-msg event NAME [--source NAME] [--chat ID] [\"details...\"]}"; shift
+    local source="manual" chat=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --source) source="${2:?}"; shift 2 ;;
+            --chat)   chat="${2:?}";   shift 2 ;;
+            --help|-h) usage 0 ;;
+            --) shift; break ;;
+            -*) die "unknown option: $1" ;;
+            *) break ;;
+        esac
+    done
+    local details="$(sanitize "$*")"
+    send "[muse:event] name=$name source=$source :: $details" "$chat"
+}
+
+cmd_ping() {
+    # Exit 0 = message delivered to the Muse (link up). Anything else = down.
+    if musegadget send-user-msg "[muse:ping]" >/dev/null 2>&1; then
+        echo "Muse reachable."
+    else
+        echo "$PROG: Muse not reachable (gadget service down or link broken)." >&2
+        return 1
+    fi
+}
+
+command -v musegadget >/dev/null 2>&1 || die "musegadget not on PATH (is the gadget installed?)"
+
+cmd="${1:-}"; shift 2>/dev/null || true
+case "$cmd" in
+    alert) cmd_alert "$@" ;;
+    ask)   cmd_ask "$@" ;;
+    event) cmd_event "$@" ;;
+    ping)  cmd_ping "$@" ;;
+    --help|-h|"") usage 0 ;;
+    *) die "unknown command: $cmd (try: alert, ask, event, ping)" ;;
+esac

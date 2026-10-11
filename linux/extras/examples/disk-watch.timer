@@ -1,0 +1,9 @@
+[Unit]
+Description=Check disk usage hourly and alert Muse
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target
