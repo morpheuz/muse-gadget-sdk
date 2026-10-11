@@ -45,7 +45,10 @@ dongle is only needed once, for the initial phone pairing.
   `plasma.py` rebuilds it from the account uid —
   `DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/<uid>/bus`,
   `XDG_RUNTIME_DIR`, `WAYLAND_DISPLAY` when the socket exists, `DISPLAY=:0`
-  fallback otherwise.
+  fallback otherwise. Helper subprocesses are demoted to the `--run-as`
+  account (the service itself runs as root), and files they create on the
+  desktop user's behalf are chown'd over — e.g. the KWin script temp file,
+  which KWin itself must be able to open.
 - **Window list/focus**: KWin exposes no direct "list windows" D-Bus method.
   We inject a JS snippet via `org.kde.KWin /Scripting loadScript`, run it, and
   read its `print()` output back from the journal with a unique run marker.
@@ -53,11 +56,12 @@ dongle is only needed once, for the initial phone pairing.
   category is disabled on that box. KWin script `print()` goes out at debug
   level, so anything filtering Qt debug output silences it — notably,
   Fedora's qt6-qtbase ships `/usr/share/qt6/qtlogging.ini` with
-  `*.debug=false`. Fix (documented by KDE): put
-  `QT_LOGGING_RULES="kwin_*.debug=true"` in `~/.config/environment.d/` (e.g.
-  `~/.config/environment.d/kwin-debug.conf`) and log out and back in so the
-  already-running `kwin_wayland` picks it up. `kdebugsettings` → KWin Scripting
-  → Full Debug is the GUI equivalent.
+  `*.debug=false`. The gadget installs the KDE-documented fix itself:
+  `QT_LOGGING_RULES="kwin_*.debug=true"` in
+  `~/.config/environment.d/kwin-debug.conf` (idempotent; takes effect at next
+  login — `window.list` reports `kwin_logging: applied` when it just wrote
+  the file). `kdebugsettings` → KWin Scripting → Full Debug is the GUI
+  equivalent.
 - **Screenshots**: Spectacle `-b -n -o` (background, no popup). Returns the PNG
   path; the existing `file.read` command fetches the bytes.
 
