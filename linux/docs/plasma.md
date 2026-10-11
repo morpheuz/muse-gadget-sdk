@@ -50,7 +50,14 @@ dongle is only needed once, for the initial phone pairing.
   We inject a JS snippet via `org.kde.KWin /Scripting loadScript`, run it, and
   read its `print()` output back from the journal with a unique run marker.
   If `window.list` reports no script output, the `kwin_scripting` logging
-  category is disabled on that box.
+  category is disabled on that box. KWin script `print()` goes out at debug
+  level, so anything filtering Qt debug output silences it — notably,
+  Fedora's qt6-qtbase ships `/usr/share/qt6/qtlogging.ini` with
+  `*.debug=false`. Fix (documented by KDE): put
+  `QT_LOGGING_RULES="kwin_*.debug=true"` in `~/.config/environment.d/` (e.g.
+  `~/.config/environment.d/kwin-debug.conf`) and log out and back in so the
+  already-running `kwin_wayland` picks it up. `kdebugsettings` → KWin Scripting
+  → Full Debug is the GUI equivalent.
 - **Screenshots**: Spectacle `-b -n -o` (background, no popup). Returns the PNG
   path; the existing `file.read` command fetches the bytes.
 
