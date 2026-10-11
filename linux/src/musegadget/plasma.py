@@ -272,16 +272,14 @@ def desktop_screenshot(env: dict, account, params: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def clipboard_get(env: dict, params: dict) -> dict:
+    """Read the current (latest) clipboard entry.
+
+    Deliberately no history index — the gadget never trawls clipboard
+    history.
+    """
     qdbus = _qdbus()
-    index = params.get("index")
-    if index is None:
-        out = _run([qdbus, "org.kde.klipper", "/klipper",
-                    "getClipboardContents"], env)
-    else:
-        if not isinstance(index, int) or index < 0:
-            raise PlasmaError("index must be a non-negative integer")
-        out = _run([qdbus, "org.kde.klipper", "/klipper",
-                    "getClipboardHistoryItem", str(index)], env)
+    out = _run([qdbus, "org.kde.klipper", "/klipper",
+                "getClipboardContents"], env)
     text = out.rstrip("\n")
     return {"text": text, "chars": len(text)}
 
@@ -730,27 +728,23 @@ def screen_brightness(env: dict, params: dict) -> dict:
 # clipboard.history / clipboard.clear
 # ---------------------------------------------------------------------------
 
-_HISTORY_ITEM_LIMIT = 50
 _HISTORY_CHARS = 2000
 
 
 def clipboard_history(env: dict, params: dict) -> dict:
-    limit = params.get("limit", 20)
-    if not isinstance(limit, int) or isinstance(limit, bool) \
-            or not 1 <= limit <= _HISTORY_ITEM_LIMIT:
-        raise PlasmaError(f"limit must be an integer between 1 and {_HISTORY_ITEM_LIMIT}")
+    """Return only the latest Klipper entry.
+
+    Deliberately limited to the single most recent item — the gadget never
+    trawls clipboard history.
+    """
     qdbus = _qdbus()
-    items = []
-    for i in range(limit):
-        try:
-            out = _run([qdbus, "org.kde.klipper", "/klipper",
-                        "getClipboardHistoryItem", str(i)], env, timeout=10)
-        except PlasmaError:
-            break
-        text = out.rstrip("\n")
-        if not text:
-            break
-        items.append(text[:_HISTORY_CHARS])
+    try:
+        out = _run([qdbus, "org.kde.klipper", "/klipper",
+                    "getClipboardHistoryItem", "0"], env, timeout=10)
+    except PlasmaError:
+        return {"history": [], "count": 0}
+    text = out.rstrip("\n")
+    items = [text[:_HISTORY_CHARS]] if text else []
     return {"history": items, "count": len(items)}
 
 
