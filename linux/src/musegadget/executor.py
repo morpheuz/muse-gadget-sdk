@@ -134,11 +134,9 @@ COMMAND_SPECS = {
         "timeout_ms": 60000,
     },
     "clipboard.get": {
-        "description": "Read text from the Plasma clipboard via Klipper.",
+        "description": "Read the latest text from the Plasma clipboard via Klipper.",
         "required": {},
-        "optional": {
-            "index": {"type": "integer", "description": "History entry, 0 = most recent. Omit for the current clipboard."},
-        },
+        "optional": {},
     },
     "clipboard.set": {
         "description": "Put text on the Plasma clipboard via Klipper.",
@@ -150,11 +148,9 @@ COMMAND_SPECS = {
         },
     },
     "clipboard.history": {
-        "description": "Klipper clipboard history, newest first.",
+        "description": "Latest Klipper clipboard entry only (history trawling is disabled).",
         "required": {},
-        "optional": {
-            "limit": {"type": "integer", "description": "Max entries, 1-50. Default 20."},
-        },
+        "optional": {},
     },
     "clipboard.clear": {
         "description": "Wipe Klipper's clipboard history and current contents.",
