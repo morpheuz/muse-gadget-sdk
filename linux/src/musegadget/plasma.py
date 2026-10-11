@@ -67,8 +67,18 @@ class PlasmaError(Exception):
 # Entry point (called from Executor._plasma)
 # ---------------------------------------------------------------------------
 
+# Demotion target for helper subprocesses: the executor runs as root but
+# Plasma helpers must run as the --run-as desktop user (child_options
+# carries user=/group= from the executor; only present when root).
+_RUN_USER = None
+_RUN_GROUP = None
+
+
 def run(command: str, params: dict, child_options: dict, account) -> dict:
     """Run one plasma.* command. Returns the payload dict for ok()."""
+    global _RUN_USER, _RUN_GROUP
+    _RUN_USER = child_options.get("user")
+    _RUN_GROUP = child_options.get("group")
     env = _session_env(child_options.get("env") or {}, account.uid)
     if command == "desktop.status":
         return desktop_status(env, account)
@@ -134,9 +144,14 @@ def _qdbus() -> str:
 
 def _run(argv: list[str], env: dict, timeout: int = 20) -> str:
     """Run argv, return stdout; raise PlasmaError on failure."""
+    demote: dict = {}
+    if _RUN_USER is not None:
+        demote["user"] = _RUN_USER
+    if _RUN_GROUP is not None:
+        demote["group"] = _RUN_GROUP
     try:
         proc = subprocess.run(argv, capture_output=True, text=True,
-                              timeout=timeout, env=env)
+                              timeout=timeout, env=env, **demote)
     except subprocess.TimeoutExpired:
         raise PlasmaError(f"{argv[0]} timed out after {timeout}s")
     except OSError as exc:
