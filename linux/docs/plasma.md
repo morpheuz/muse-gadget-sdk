@@ -11,8 +11,8 @@ Stdlib-only. 34 tests in `tests/test_plasma.py`.
 | `desktop.status` | Readiness probe: session bus, Klipper, KWin, helper tools. Run first |
 | `desktop.notify` | Pop a notification (`notify-send`), urgency + expiry options |
 | `desktop.screenshot` | Spectacle background capture → PNG path (then `file.read` for bytes) |
-| `clipboard.get` / `clipboard.set` | Klipper over D-Bus; history index; optional history wipe |
-| `clipboard.history` / `clipboard.clear` | Full Klipper history (newest first); wipe history + contents |
+| `clipboard.get` / `clipboard.set` | Klipper over D-Bus; latest entry only; optional history wipe |
+| `clipboard.history` / `clipboard.clear` | Latest Klipper entry only (history trawling disabled); wipe history + contents |
 | `window.list` / `window.focus` | KWin scripting roundtrip (caption, app class, desktop, active/minimized; focus by substring) |
 | `screen.lock` | Lock the session now |
 | `screen.brightness` | PowerDevil D-Bus get/set (percent, keeps Plasma OSD in sync) |
@@ -83,7 +83,7 @@ trusted network, and treat the machine accordingly. `clipboard.set` has a
 - [ ] `media.control` play-pause → music toggles
 - [ ] `screen.brightness` get → percent matches the OSD slider; set 50 → screen dims
 - [ ] `power.profile` get/set → `powerprofilesctl` agrees
-- [ ] `clipboard.history` → recent copies listed newest-first
+- [ ] `clipboard.history` → latest entry only, never trawls history
 - [ ] `session.idle_inhibit` (e.g. 120s) → screen stays awake past the idle timeout
 
 ## Notes
