@@ -161,7 +161,7 @@ def test_window_list_parses_records(monkeypatch):
         f"{runid}\tWIN\tKonsole\torg.kde.konsole\tkonsole\t1\t0\t1",
         f"{runid}\tEND",
     ]
-    monkeypatch.setattr(plasma, "_kwin_inject", lambda env, match: lines)
+    monkeypatch.setattr(plasma, "_kwin_inject", lambda env, match: (lines, "ok"))
     out = plasma.window_list({})
     assert out["count"] == 2
     assert out["windows"][0]["caption"] == "Dolphin"
@@ -170,7 +170,7 @@ def test_window_list_parses_records(monkeypatch):
 
 
 def test_window_list_empty_journal(monkeypatch):
-    monkeypatch.setattr(plasma, "_kwin_inject", lambda env, match: [])
+    monkeypatch.setattr(plasma, "_kwin_inject", lambda env, match: ([], "ok"))
     with pytest.raises(PlasmaError, match="kwin_scripting"):
         plasma.window_list({})
 
@@ -178,8 +178,8 @@ def test_window_list_empty_journal(monkeypatch):
 def test_window_focus_nomatch(monkeypatch):
     runid = "mgabc123"
     monkeypatch.setattr(plasma, "_kwin_inject",
-                        lambda env, match: [f"{runid}\tNOMATCH",
-                                            f"{runid}\tEND"])
+                        lambda env, match: ([f"{runid}\tNOMATCH",
+                                            f"{runid}\tEND"], "ok"))
     with pytest.raises(PlasmaError, match="no window matched"):
         plasma.window_focus({}, {"match": "nope"})
 
@@ -187,6 +187,47 @@ def test_window_focus_nomatch(monkeypatch):
 def test_window_focus_requires_match():
     with pytest.raises(PlasmaError, match="match is required"):
         plasma.window_focus({}, {"match": "  "})
+
+
+def test_ensure_kwin_logging_writes_conf(tmp_path, monkeypatch):
+    monkeypatch.setattr(plasma, "_RUN_USER", 1000)
+    monkeypatch.setattr(plasma, "_RUN_GROUP", 1000)
+    chowned = []
+    monkeypatch.setattr(os, "chown",
+                        lambda p, u, g: chowned.append((p, u, g)))
+    env = {"HOME": str(tmp_path)}
+    assert plasma._ensure_kwin_script_logging(env) == "applied"
+    conf = tmp_path / ".config" / "environment.d" / "kwin-debug.conf"
+    assert conf.read_text() == 'QT_LOGGING_RULES="kwin_*.debug=true"\n'
+    assert chowned == [(str(conf), 1000, 1000)]
+    assert plasma._ensure_kwin_script_logging(env) == "ok"
+
+
+def test_ensure_kwin_logging_unavailable_without_home():
+    assert plasma._ensure_kwin_script_logging({}) == "unavailable"
+
+
+def test_kwin_inject_hands_script_to_desktop_user(tmp_path, monkeypatch):
+    import time as time_mod
+    monkeypatch.setattr(plasma, "_RUN_USER", 1000)
+    monkeypatch.setattr(plasma, "_RUN_GROUP", 1000)
+    monkeypatch.setattr(plasma, "_ensure_kwin_script_logging",
+                        lambda env: "ok")
+    seen = {}
+    monkeypatch.setattr(os, "chown",
+                        lambda p, u, g: seen.update(chown=(u, g)))
+    monkeypatch.setattr(os, "chmod",
+                        lambda p, mode: seen.update(chmod=mode))
+    monkeypatch.setattr(plasma, "_qdbus", lambda: "/usr/bin/qdbus")
+    monkeypatch.setattr(plasma, "_run", lambda argv, env, timeout=20: "0")
+    monkeypatch.setattr(plasma, "_journal_marker_lines",
+                        lambda env, since, runid: [f"{runid}\tEND"])
+    monkeypatch.setattr(time_mod, "sleep", lambda s: None)
+    lines, status = plasma._kwin_inject({"HOME": str(tmp_path)}, match=None)
+    assert status == "ok"
+    assert seen["chown"] == (1000, 1000)
+    assert seen["chmod"] == 0o644
+    assert lines and lines[0].endswith("\tEND")
 
 
 def test_run_rejects_unknown_command(calls):
