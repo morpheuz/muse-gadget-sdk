@@ -104,12 +104,14 @@ def test_clipboard_get_current(calls, monkeypatch):
     assert invocations[0][0][-1] == "getClipboardContents"
 
 
-def test_clipboard_get_history_index(calls, monkeypatch):
+def test_clipboard_get_ignores_history_index(calls, monkeypatch):
+    # index param removed: the gadget only ever reads the latest entry
     invocations, canned = calls
     monkeypatch.setattr(plasma, "_qdbus", lambda: "qdbus")
-    canned[("qdbus",)] = "older\n"
-    plasma.run("clipboard.get", {"index": 2}, {"env": {}}, FakeAccount())
-    assert invocations[0][0][-2:] == ["getClipboardHistoryItem", "2"]
+    canned[("qdbus",)] = "hello\n"
+    out = plasma.run("clipboard.get", {"index": 2}, {"env": {}}, FakeAccount())
+    assert out == {"text": "hello", "chars": 5}
+    assert invocations[0][0][-1] == "getClipboardContents"
 
 
 def test_audio_volume_parses_muted(calls, monkeypatch):
@@ -357,23 +359,27 @@ def test_screen_brightness_set_validates_level(calls):
                    {"env": {}}, FakeAccount())
 
 
-def test_clipboard_history_stops_at_empty(monkeypatch):
-    responses = ["first\n", "second\n", "\n"]
+def test_clipboard_history_returns_only_latest(monkeypatch):
+    seen = []
 
     def fake_run(argv, env, timeout=20):
-        return responses.pop(0)
+        seen.append(argv)
+        return "latest\n"
 
     monkeypatch.setattr(plasma, "_run", fake_run)
     monkeypatch.setattr(plasma, "_qdbus", lambda: "qdbus")
-    out = plasma.run("clipboard.history", {"limit": 20}, {"env": {}},
-                     FakeAccount())
-    assert out == {"history": ["first", "second"], "count": 2}
+    out = plasma.run("clipboard.history", {}, {"env": {}}, FakeAccount())
+    assert out == {"history": ["latest"], "count": 1}
+    # only ever reads history index 0, never trawls
+    assert seen == [["qdbus", "org.kde.klipper", "/klipper",
+                     "getClipboardHistoryItem", "0"]]
 
 
-def test_clipboard_history_validates_limit():
-    with pytest.raises(PlasmaError, match="limit must be"):
-        plasma.run("clipboard.history", {"limit": 99}, {"env": {}},
-                   FakeAccount())
+def test_clipboard_history_empty(monkeypatch):
+    monkeypatch.setattr(plasma, "_run", lambda argv, env, timeout=20: "\n")
+    monkeypatch.setattr(plasma, "_qdbus", lambda: "qdbus")
+    out = plasma.run("clipboard.history", {}, {"env": {}}, FakeAccount())
+    assert out == {"history": [], "count": 0}
 
 
 def test_clipboard_clear_calls_both(calls, monkeypatch):
