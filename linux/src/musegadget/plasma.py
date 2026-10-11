@@ -349,9 +349,43 @@ print(lines.join("\\n"));
 """
 
 
-def _kwin_inject(env: dict, match: str | None) -> list[str]:
-    """Inject a KWin script and return its journal marker lines."""
+def _ensure_kwin_script_logging(env: dict) -> str:
+    """Make sure KWin script print() output reaches the journal.
+
+    KWin script print() goes out at debug level, so anything filtering Qt
+    debug output silences it — notably, Fedora's qt6-qtbase ships
+    /usr/share/qt6/qtlogging.ini with *.debug=false. The KDE-documented fix
+    is QT_LOGGING_RULES="kwin_*.debug=true" in ~/.config/environment.d/,
+    which the user session picks up at next login. This installs that file
+    idempotently. Returns "ok" (already in place), "applied" (written now —
+    takes effect after re-login), or "unavailable" (no HOME to write to).
+    """
+    home = env.get("HOME")
+    if not home:
+        return "unavailable"
+    conf_path = os.path.join(home, ".config", "environment.d",
+                             "kwin-debug.conf")
+    want = 'QT_LOGGING_RULES="kwin_*.debug=true"\n'
+    try:
+        if os.path.exists(conf_path):
+            with open(conf_path) as fh:
+                if fh.read() == want:
+                    return "ok"
+        os.makedirs(os.path.dirname(conf_path), exist_ok=True)
+        with open(conf_path, "w") as fh:
+            fh.write(want)
+        if _RUN_USER is not None:  # service runs as root; keep it the user's
+            os.chown(conf_path, _RUN_USER,
+                     _RUN_GROUP if _RUN_GROUP is not None else -1)
+        return "applied"
+    except OSError:
+        return "unavailable"
+
+
+def _kwin_inject(env: dict, match: str | None) -> tuple[list[str], str]:
+    """Inject a KWin script; return (journal marker lines, logging status)."""
     qdbus = _qdbus()
+    logging_status = _ensure_kwin_script_logging(env)
     runid = "mg" + uuid.uuid4().hex[:10]
     name = f"musegadget-{runid}"
     js = _KWIN_JS.replace("__RUNID__", runid)
@@ -361,6 +395,12 @@ def _kwin_inject(env: dict, match: str | None) -> list[str]:
                                      delete=False) as fh:
         fh.write(js)
         script_path = fh.name
+    # The service runs as root but KWin runs as the desktop user: hand the
+    # script file over so KWin can actually open it.
+    if _RUN_USER is not None:
+        os.chown(script_path, _RUN_USER,
+                 _RUN_GROUP if _RUN_GROUP is not None else -1)
+    os.chmod(script_path, 0o644)
     try:
         since = time.time() - 2
         # Defeat loadScript's "already loaded -> return existing id" cache.
@@ -382,7 +422,7 @@ def _kwin_inject(env: dict, match: str | None) -> list[str]:
                   "org.kde.kwin.Scripting.unloadScript", name], env, timeout=10)
         except PlasmaError:
             pass
-        return _journal_marker_lines(env, since, runid)
+        return _journal_marker_lines(env, since, runid), logging_status
     finally:
         try:
             os.unlink(script_path)
@@ -419,13 +459,13 @@ def _kwin_records(lines: list[str], runid: str, want: str) -> list[list[str]]:
 
 
 def window_list(env: dict) -> dict:
-    lines = _kwin_inject(env, match=None)
+    lines, logging_status = _kwin_inject(env, match=None)
     if not lines:
         raise PlasmaError(
             "no output from the KWin script in the journal — the kwin_scripting "
-            "logging category may be disabled on this box (enable it via "
-            "System Settings > KWin Scripts debugging, or qtlogging.ini), or "
-            "KWin is not running")
+            "logging category may be disabled on this box (the gadget installs "
+            "~/.config/environment.d/kwin-debug.conf automatically; it takes "
+            "effect after re-login), or KWin is not running")
     runid = lines[0].split("\t")[0]
     windows = []
     for parts in _kwin_records(lines, runid, "WIN"):
@@ -438,14 +478,15 @@ def window_list(env: dict) -> dict:
             "active": (parts[6] if len(parts) > 6 else "0") == "1",
             "minimized": (parts[7] if len(parts) > 7 else "0") == "1",
         })
-    return {"windows": windows, "count": len(windows)}
+    return {"windows": windows, "count": len(windows),
+            "kwin_logging": logging_status}
 
 
 def window_focus(env: dict, params: dict) -> dict:
     match = params.get("match")
     if not isinstance(match, str) or not match.strip():
         raise PlasmaError("match is required (substring of window title or app class)")
-    lines = _kwin_inject(env, match=match.strip())
+    lines, _ = _kwin_inject(env, match=match.strip())
     if not lines:
         raise PlasmaError("no output from the KWin script in the journal")
     runid = lines[0].split("\t")[0]
